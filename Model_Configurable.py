@@ -128,15 +128,17 @@ for t in m.T:
         grid_frac = params['grid_fraction'][t - 1]
         op_co2 = comp_energy * grid_frac * params['carbon_intensity']
         emb_co2 = params['embodied_carbon'] * (jobs / capacities[tier])
-
+        idle_co2 = params['idle_power_w'] * params['carbon_intensity']
+        
         # Store per-tier values
         row[f"{tier}_jobs"] = jobs
         row[f"{tier}_energy"] = comp_energy
         row[f"{tier}_op_co2"] = op_co2
         row[f"{tier}_emb_co2"] = emb_co2
+        row[f"{tier}_idle_co2"] = idle_co2
 
         total_energy += comp_energy
-        total_co2 += op_co2 + emb_co2
+        total_co2 += op_co2 + emb_co2 + idle_co2
 
     row["total_energy"] = total_energy
     row["total_co2"] = total_co2
