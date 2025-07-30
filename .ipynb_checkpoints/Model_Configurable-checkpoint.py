@@ -1,7 +1,6 @@
 import yaml
 import numpy as np
 import pyomo.environ as pyo
-import pandas as pd
 
 # ----------------------------
 # LOAD CONFIG
@@ -43,7 +42,6 @@ capacities = {tier: calc_capacity(params) for tier, params in tiers.items()}
 print(f'DC Capacity:',capacities['DC'])
 print(f'SDC Capacity:',capacities['SDC'])
 print(f'EDGE Capacity:',capacities['EDGE'])
-
 # ----------------------------
 # BUILD OPTIMIZATION MODEL
 # ----------------------------
@@ -51,14 +49,12 @@ m = pyo.ConcreteModel(name="CO2_minimization")
 
 # Sets
 m.T = pyo.Set(initialize=range(1, PERIODS+1))
-m.TIERS = pyo.Set(initialize=tiers.keys())
 
 # Params
 m.demand = pyo.Param(m.T, initialize=demand_dict)
 
 # Variables
-m.jobs = pyo.Var(m.T, m.TIERS, within=pyo.NonNegativeReals)
-#m.energy = pyo.Var(m.T, m.TIERS, within=pyo.NonNegativeReals)
+m.jobs = pyo.Var(m.T, tiers.keys(), within=pyo.NonNegativeReals)
 
 # Demand constraint
 def demand_bal(m, t):
@@ -78,49 +74,18 @@ if MIN_SHARE > 0:
             return m.jobs[t, tier] >= MIN_SHARE * m.demand[t]
         setattr(m, f"{tier}_min_share", pyo.Constraint(m.T, rule=min_share_rule))
 
-
-# Precompute constants
-timestep_hours = PERIOD_SECONDS / 3600.0
-job_time_h_per_token = 1 / 3600.0  # seconds to hours per token
-
-# Auxiliary energy expression and constraints
-m.energy_active = pyo.Var(m.T, m.TIERS, within=pyo.NonNegativeReals) #Defining the active energy decision variable 
-
-def active_energy_rule(m, t, tier):
-    job_time_h = TOKENS_PER_JOB * job_time_h_per_token / tiers[tier]['throughput'] #converts time taken for a job to hours
-    return m.energy_active[t, tier] == tiers[tier]['power_draw'] * job_time_h * m.jobs[t, tier] #Constrains the active energy variable to always be equal to this equation
-
-m.active_energy_calc = pyo.Constraint(m.T, m.TIERS, rule=active_energy_rule)
-
-#Defining idle energy and constraining it to be equal to the expression
-m.energy_idle = pyo.Var(m.T, m.TIERS, within=pyo.NonNegativeReals)
-
-def idle_energy_rule(m, t, tier):
-    job_time = TOKENS_PER_JOB * job_time_h_per_token /tiers[tier]['throughput']
-    used_time = m.jobs[t, tier] * job_time
-    total_time = tiers[tier]['parallel_units'] * timestep_hours
-    return m.energy_idle[t, tier] == (total_time - used_time) * tiers[tier]['idle_power_kw']
-    
-m.idle_energy_constraint = pyo.Constraint(m.T, m.TIERS, rule=idle_energy_rule)
-
-#Calculating total energy through an expression summing the two components per timestep
-def total_energy_expr(m, t, tier):
-    return m.energy_active[t, tier] + m.energy_idle[t, tier]
-
-m.energy = pyo.Expression(m.T, m.TIERS, rule=total_energy_expr)
-
-# Objective: total CO2 (operational + embodied + idle)
+# Objective: total CO2 (operational + embodied)
 def total_CO2(m):
     total = 0
     for t in m.T:
-        for tier in tiers:
+        for tier, params in tiers.items():
             jobs = m.jobs[t, tier]
-            grid_frac = tiers[tier]['grid_fraction'][t - 1]
-            ci = tiers[tier]['carbon_intensity']
-            op_CO2 = m.energy_active[t, tier] * grid_frac * ci
-            emb_CO2 = tiers[tier]['embodied_carbon'] * (jobs / capacities[tier]) * tiers[tier]['parallel_units']
-            idle_co2 = m.energy_idle[t, tier] * grid_frac * ci
-            total += op_CO2 + emb_CO2 + idle_co2
+            energy = params['comp_energy'] * jobs
+            grid_fraction = params['grid_fraction'][t-1]
+            ci = params['carbon_intensity']
+            op_CO2 = energy * grid_fraction * ci
+            emb_CO2 = params['embodied_carbon'] * (jobs / capacities[tier])
+            total += op_CO2 + emb_CO2
     return total
 m.total_CO2 = pyo.Expression(rule=total_CO2)
 m.obj = pyo.Objective(expr=m.total_CO2, sense=pyo.minimize)
@@ -136,40 +101,56 @@ result = solver.solve(m, tee=False)
 # ----------------------------
 print("\nSolve Status:", result.solver.status)
 print("Termination  :", result.solver.termination_condition)
-print("\nTotal CO2 (kgCO2):", pyo.value(m.total_CO2))
 
+print("\nTotal CO2 (gCO2):", pyo.value(m.total_CO2))
 print("\nPer-period allocation:")
 for t in m.T:
     print(f"t={t:02d} demand={m.demand[t]:7.1f} " +
           " ".join(f"{tier}={m.jobs[t,tier].value:7.1f}" for tier in tiers))
+    
+import pandas as pd
 
-# Create DataFrame (Note values are being calculated in post using the indexed outputs of the model anddoing the same calculations)
+# Create lists to populate into the DataFrame
 records = []
+
 for t in m.T:
-    row = {"period": t, "demand": pyo.value(m.demand[t])}
+    row = {
+        "period": t,
+        "demand": pyo.value(m.demand[t]),
+    }
+
     total_energy = 0
     total_co2 = 0
-    for tier in tiers:
+
+    for tier, params in tiers.items():
         jobs = pyo.value(m.jobs[t, tier])
-        grid_frac = tiers[tier]['grid_fraction'][t - 1]
-        ci = tiers[tier]['carbon_intensity']
-        energy = pyo.value(m.energy[t, tier])
-        op_co2 = pyo.value(m.energy_active[t, tier]) * grid_frac * ci
-        emb_co2 = tiers[tier]['embodied_carbon'] * (jobs / capacities[tier]) * tiers[tier]['parallel_units']
-        idle_co2 =pyo.value( m.energy_idle[t, tier]) * grid_frac * ci
+        comp_energy = jobs * params['comp_energy']
+        grid_frac = params['grid_fraction'][t - 1]
+        op_co2 = comp_energy * grid_frac * params['carbon_intensity']
+        emb_co2 = params['embodied_carbon'] * (jobs / capacities[tier])
+        idle_co2 = params['idle_power_w'] * params['carbon_intensity'] * params['parallel_units'] * 2 #idle power x carbon intensity x 2 to get to kwh since half-hourly timesteps
+        
+        # Store per-tier values
         row[f"{tier}_jobs"] = jobs
-        row[f"{tier}_idle_energy"] = pyo.value(m.energy_idle[t, tier])
-        row[f"{tier}_active_energy"] = pyo.value(m.energy_active[t, tier])
-        row[f"{tier}_energy"] = energy
+        row[f"{tier}_energy"] = comp_energy
         row[f"{tier}_op_co2"] = op_co2
         row[f"{tier}_emb_co2"] = emb_co2
         row[f"{tier}_idle_co2"] = idle_co2
+
+        total_energy += comp_energy
         total_co2 += op_co2 + emb_co2 + idle_co2
+
     row["total_energy"] = total_energy
     row["total_co2"] = total_co2
+
     records.append(row)
 
+# Create the DataFrame
 results_df = pd.DataFrame(records)
+
+# Show a preview
 print("\n--- Results DataFrame Preview ---")
 print(results_df.head())
+
+# Optionally export to CSV
 results_df.to_csv("results.csv", index=False)

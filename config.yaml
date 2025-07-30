@@ -2,9 +2,9 @@
 global:
   periods: 48                     # Number of half-hour periods in the day
   period_seconds: 1800            # 30 min per period
-  tokens_per_job: 2000            # Tokens per inference job
-  total_daily_jobs: 1000000       # Total jobs in the horizon
-  min_share: 0.0                  # Minimum share of demand per tier (0 disables constraint)
+  tokens_per_job: 400            # Tokens per inference job
+  total_daily_jobs: 100_000_000       # Total jobs in the horizon
+  min_share: 0                  # Minimum share of demand per tier (0 disables constraint)
 
 # Demand shape (normalized to sum to 1, length = periods)
 demand_shape: 
@@ -13,31 +13,34 @@ demand_shape:
 
 tiers:
   DC:
-    throughput: 35000              # tokens/sec
-    parallel_units: 1
-    utilization: 1.0
-    comp_energy: 6.02              # kWh per job (after PUE adjustments)
-    embodied_carbon: 0.05248       # kg CO₂ per job amortized
+    throughput: 3000              # tokens/sec
+    parallel_units: 100
+    utilization: 0.8
+    power_draw: 0.726              # kWh per job (after PUE adjustments)
+    embodied_carbon: 0.002       # kg CO₂ per job amortized
     carbon_intensity: .450          # gCO₂/kWh
     grid_fraction: [0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15, 0.15]     # List of fractions per period (use [value] * periods)
-    idle_power_w: 50
+    idle_power_kw: .050
+    tokens_per_job: 400
 
   SDC:
-    throughput: 1500
-    parallel_units: 4
-    utilization: 1.0
-    comp_energy: 0.576
-    embodied_carbon: 0.04934
+    throughput: 600
+    parallel_units: 500
+    utilization: 0.6
+    power_draw: 0.630
+    embodied_carbon: 0.0205
     carbon_intensity: .550
     grid_fraction: [0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8]
-    idle_power_w: 45
+    idle_power_kw: .045
+    tokens_per_job: 400
 
   EDGE:
-    throughput: 1500
-    parallel_units: 1
+    throughput: 5
+    parallel_units: 1000000
     utilization: 1.0
-    comp_energy: 0.01243
-    embodied_carbon: 0.02667
+    power_draw: 0.04
+    embodied_carbon: 0.001
     carbon_intensity: .360
     grid_fraction: [0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95, 0.95]
-    idle_power_w: 25
+    idle_power_kw: .001
+    tokens_per_job: 400
