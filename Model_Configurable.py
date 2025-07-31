@@ -42,7 +42,9 @@ def calc_capacity(tier_params):
 capacities = {tier: calc_capacity(params) for tier, params in tiers.items()}
 print(f'DC Capacity:',capacities['DC'])
 print(f'SDC Capacity:',capacities['SDC'])
-print(f'EDGE Capacity:',capacities['EDGE'])
+print(f'EDGE Zone 1 Capacity:',capacities['EDGE_ZONE1'])
+print(f'EDGE Zone 2 Capacity:',capacities['EDGE_ZONE2'])
+print(f'EDGE Zone 3 Capacity:',capacities['EDGE_ZONE3'])
 
 # ----------------------------
 # BUILD OPTIMIZATION MODEL
@@ -116,7 +118,7 @@ def total_CO2(m):
         for tier in tiers:
             jobs = m.jobs[t, tier]
             grid_frac = tiers[tier]['grid_fraction'][t - 1]
-            ci = tiers[tier]['carbon_intensity']
+            ci = tiers[tier]['carbon_intensity'][t-1]
             op_CO2 = m.energy_active[t, tier] * grid_frac * ci
             emb_CO2 = tiers[tier]['embodied_carbon'] * (jobs / capacities[tier]) * tiers[tier]['parallel_units']
             idle_co2 = m.energy_idle[t, tier] * grid_frac * ci
@@ -152,7 +154,7 @@ for t in m.T:
     for tier in tiers:
         jobs = pyo.value(m.jobs[t, tier])
         grid_frac = tiers[tier]['grid_fraction'][t - 1]
-        ci = tiers[tier]['carbon_intensity']
+        ci = tiers[tier]['carbon_intensity'][t-1]
         energy = pyo.value(m.energy[t, tier])
         op_co2 = pyo.value(m.energy_active[t, tier]) * grid_frac * ci
         emb_co2 = tiers[tier]['embodied_carbon'] * (jobs / capacities[tier]) * tiers[tier]['parallel_units']
