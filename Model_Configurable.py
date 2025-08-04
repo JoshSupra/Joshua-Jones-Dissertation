@@ -101,7 +101,7 @@ m.energy_active = pyo.Var(m.T, m.TIERS, within=pyo.NonNegativeReals) #Defining t
 
 def active_energy_rule(m, t, tier):
     job_time_h = TOKENS_PER_JOB * job_time_h_per_token / tiers[tier]['throughput'] #converts time taken for a job to hours
-    return m.energy_active[t, tier] == tiers[tier]['power_draw'] * job_time_h * m.jobs[t, tier] #Constrains the active energy variable to always be equal to this equation
+    return m.energy_active[t, tier] == tiers[tier]['power_draw'] * job_time_h * m.jobs[t, tier]  * tiers[tier]['PUE'] * tiers[tier]['SPUE']#Constrains the active energy variable to always be equal to this equation
 
 m.active_energy_calc = pyo.Constraint(m.T, m.TIERS, rule=active_energy_rule)
 
@@ -112,7 +112,7 @@ def idle_energy_rule(m, t, tier):
     job_time = TOKENS_PER_JOB * job_time_h_per_token /tiers[tier]['throughput']
     used_time = m.jobs[t, tier] * job_time
     total_time = tiers[tier]['parallel_units'] * timestep_hours
-    return m.energy_idle[t, tier] == (total_time - used_time) * tiers[tier]['idle_power_kw']
+    return m.energy_idle[t, tier] == (total_time - used_time) * tiers[tier]['idle_power_kw'] * tiers[tier]['PUE'] * tiers[tier]['SPUE']
     
 m.idle_energy_constraint = pyo.Constraint(m.T, m.TIERS, rule=idle_energy_rule)
 
@@ -169,6 +169,7 @@ for t in m.T:
         grid_frac = tiers[tier]['grid_fraction'][t - 1]
         local_frac = 1 - grid_frac
         ci_grid = tiers[tier]['carbon_intensity'][t-1]
+        ci_local = tiers[tier]['local_carbon_intensity'][t-1]
         energy = pyo.value(m.energy[t, tier])
         op_co2 = pyo.value(m.energy_active[t, tier]) * (grid_frac * ci_grid) + (local_frac * ci_local)
         emb_co2 = tiers[tier]['embodied_carbon'] * (jobs / capacities[tier]) * tiers[tier]['parallel_units']
