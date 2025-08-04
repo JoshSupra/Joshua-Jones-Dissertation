@@ -60,12 +60,23 @@ m.demand = pyo.Param(m.T, initialize=demand_dict)
 
 # Variables
 m.jobs = pyo.Var(m.T, m.TIERS, within=pyo.NonNegativeReals)
+m.backlog = pyo.Var(m.T, within=pyo.NonNegativeReals)
 #m.energy = pyo.Var(m.T, m.TIERS, within=pyo.NonNegativeReals)
 
 # Demand constraint
 def demand_bal(m, t):
     return sum(m.jobs[t, tier] for tier in tiers) == m.demand[t]
 m.demand_constraint = pyo.Constraint(m.T, rule=demand_bal)
+
+def backlog_balance_rule(m, t): #passes excess compute workload to next timestep
+    if t == m.T.first():
+        return m.backlog[t] == m.demand[t] - sum(m.jobs[t, tier] for tier in m.TIERS)
+    else:
+        return m.backlog[t] == m.backlog[t - 1] + m.demand[t] - sum(m.jobs[t, tier] for tier in m.TIERS)
+
+m.backlog_balance = pyo.Constraint(m.T, rule=backlog_balance_rule)
+
+m.final_clearance = pyo.Constraint(expr=m.backlog[m.T.last()] == 0) #ensures no jobs are left in backlog at end of run
 
 # Capacity constraints
 for tier, cap in capacities.items():
@@ -118,10 +129,12 @@ def total_CO2(m):
         for tier in tiers:
             jobs = m.jobs[t, tier]
             grid_frac = tiers[tier]['grid_fraction'][t - 1]
-            ci = tiers[tier]['carbon_intensity'][t-1]
-            op_CO2 = m.energy_active[t, tier] * grid_frac * ci
+            local_frac = 1 - grid_frac
+            ci_grid = tiers[tier]['carbon_intensity'][t-1]
+            ci_local = tiers[tier]['local_carbon_intensity'][t-1]
+            op_CO2 = m.energy_active[t, tier] * (grid_frac * ci_grid) + (local_frac * ci_local)
             emb_CO2 = tiers[tier]['embodied_carbon'] * (jobs / capacities[tier]) * tiers[tier]['parallel_units']
-            idle_co2 = m.energy_idle[t, tier] * grid_frac * ci
+            idle_co2 = m.energy_idle[t, tier] * (grid_frac * ci_grid) + (local_frac * ci_local)
             total += op_CO2 + emb_CO2 + idle_co2
     return total
 m.total_CO2 = pyo.Expression(rule=total_CO2)
@@ -154,11 +167,12 @@ for t in m.T:
     for tier in tiers:
         jobs = pyo.value(m.jobs[t, tier])
         grid_frac = tiers[tier]['grid_fraction'][t - 1]
-        ci = tiers[tier]['carbon_intensity'][t-1]
+        local_frac = 1 - grid_frac
+        ci_grid = tiers[tier]['carbon_intensity'][t-1]
         energy = pyo.value(m.energy[t, tier])
-        op_co2 = pyo.value(m.energy_active[t, tier]) * grid_frac * ci
+        op_co2 = pyo.value(m.energy_active[t, tier]) * (grid_frac * ci_grid) + (local_frac * ci_local)
         emb_co2 = tiers[tier]['embodied_carbon'] * (jobs / capacities[tier]) * tiers[tier]['parallel_units']
-        idle_co2 =pyo.value( m.energy_idle[t, tier]) * grid_frac * ci
+        idle_co2 =pyo.value( m.energy_idle[t, tier]) * (grid_frac * ci_grid) + (local_frac * ci_local)
         row[f"{tier}_jobs"] = jobs
         row[f"{tier}_idle_energy"] = pyo.value(m.energy_idle[t, tier])
         row[f"{tier}_active_energy"] = pyo.value(m.energy_active[t, tier])
