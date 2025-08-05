@@ -41,7 +41,9 @@ def calc_capacity(tier_params):
 
 capacities = {tier: calc_capacity(params) for tier, params in tiers.items()}
 print(f'DC Capacity:',capacities['DC'])
-print(f'SDC Capacity:',capacities['SDC'])
+print(f'SDC Capacity:',capacities['SDC_1'])
+print(f'SDC Capacity:',capacities['SDC_2'])
+print(f'SDC Capacity:',capacities['SDC_3'])
 print(f'EDGE Zone 1 Capacity:',capacities['EDGE_ZONE1'])
 print(f'EDGE Zone 2 Capacity:',capacities['EDGE_ZONE2'])
 print(f'EDGE Zone 3 Capacity:',capacities['EDGE_ZONE3'])
